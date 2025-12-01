@@ -8,9 +8,11 @@ spec:
   source:
     repoURL: https://traefik.github.io/charts
     chart: traefik
-    targetRevision: 2.11.2
+    targetRevision: 37.0.0
     helm:
       values: |
+        image:
+          tag: v2.11.2
         service:
           type: LoadBalancer
         logs:
