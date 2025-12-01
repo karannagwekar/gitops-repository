@@ -22,9 +22,13 @@ spec:
             enabled: true
         ports:
           web:
-            expose: true
+            port: 8000
+            expose:
+              default: true
           websecure:
-            expose: true
+            port: 8443
+            expose:
+              default: true
   destination:
     server: https://kubernetes.default.svc
     namespace: traefik
