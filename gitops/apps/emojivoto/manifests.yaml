@@ -181,32 +181,17 @@ spec:
             cpu: 100m
             memory: 128Mi
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
 metadata:
   name: emojivoto-web
   namespace: emojivoto
-  annotations:
-    kubernetes.io/ingress.class: traefik
 spec:
-  rules:
-    - host: emojivoto.localhost
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: web-svc
-                port:
-                  number: 80
-    - host: emojivoto.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: web-svc
-                port:
-                  number: 80
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`emojivoto.localhost`) || Host(`emojivoto.local`)
+      kind: Rule
+      services:
+        - name: web-svc
+          port: 80
