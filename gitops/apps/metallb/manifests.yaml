@@ -18,6 +18,14 @@ stringData:
   tls.key: ""
 
 ---
+# Validating Webhook Configuration (for cert-rotator)
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: metallb-webhook-configuration
+webhooks: []
+
+---
 # ServiceAccount for Controller
 apiVersion: v1
 kind: ServiceAccount
