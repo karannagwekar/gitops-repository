@@ -48,36 +48,6 @@ rules:
       - get
       - list
       - watch
-  - apiGroups:
-      - traefik.containo.us
-    resources:
-      - ingressroutes
-      - ingressroutetcps
-      - ingressrouteudps
-      - middlewares
-      - middlewaretcps
-      - tlsoptions
-      - tlsstores
-      - serverstransports
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - traefik.io
-    resources:
-      - ingressroutes
-      - ingressroutetcps
-      - ingressrouteudps
-      - middlewares
-      - middlewaretcps
-      - tlsoptions
-      - tlsstores
-      - serverstransports
-    verbs:
-      - get
-      - list
-      - watch
 
 ---
 # ClusterRoleBinding
@@ -121,9 +91,6 @@ data:
     accessLog:
       format: json
     providers:
-      kubernetesCRD:
-        allowCrossNamespace: false
-        ingressClass: traefik
       kubernetesIngress:
         ingressClass: traefik
     metrics:
