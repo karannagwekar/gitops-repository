@@ -6,6 +6,18 @@ metadata:
   name: metallb-system
 
 ---
+# Webhook Certificate Secret (empty, will be auto-rotated by MetalLB)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metallb-webhook-cert
+  namespace: metallb-system
+type: kubernetes.io/tls
+stringData:
+  tls.crt: ""
+  tls.key: ""
+
+---
 # ServiceAccount for Controller
 apiVersion: v1
 kind: ServiceAccount
