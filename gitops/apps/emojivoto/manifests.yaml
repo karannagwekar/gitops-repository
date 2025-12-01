@@ -1,0 +1,195 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: emojivoto
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web
+  namespace: emojivoto
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: emoji
+  namespace: emojivoto
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: voting
+  namespace: emojivoto
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: emojivoto
+  labels:
+    app: web-svc
+    version: v1
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  selector:
+    app: web
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: emoji-svc
+  namespace: emojivoto
+  labels:
+    app: emoji-svc
+    version: v1
+spec:
+  ports:
+  - name: grpc
+    port: 8801
+    targetPort: 8801
+  selector:
+    app: emoji
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voting-svc
+  namespace: emojivoto
+  labels:
+    app: voting-svc
+    version: v1
+spec:
+  ports:
+  - name: grpc
+    port: 8801
+    targetPort: 8801
+  selector:
+    app: voting
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: emojivoto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: web
+        version: v1
+    spec:
+      serviceAccountName: web
+      containers:
+      - name: web
+        image: buoyantio/emojivoto-web:v11
+        ports:
+        - containerPort: 8080
+        env:
+        - name: WEB_PORT
+          value: "8080"
+        - name: EMOJI_HOST
+          value: "emoji-svc:8801"
+        - name: VOTING_HOST
+          value: "voting-svc:8801"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emoji
+  namespace: emojivoto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emoji
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: emoji
+        version: v1
+    spec:
+      serviceAccountName: emoji
+      containers:
+      - name: emoji
+        image: buoyantio/emojivoto-emoji-svc:v11
+        ports:
+        - containerPort: 8801
+        env:
+        - name: GRPC_PORT
+          value: "8801"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voting
+  namespace: emojivoto
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voting
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: voting
+        version: v1
+    spec:
+      serviceAccountName: voting
+      containers:
+      - name: voting
+        image: buoyantio/emojivoto-voting-svc:v11
+        ports:
+        - containerPort: 8801
+        env:
+        - name: GRPC_PORT
+          value: "8801"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: emojivoto-web
+  namespace: emojivoto
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`emojivoto.localhost`) || Host(`emojivoto.local`)
+      kind: Rule
+      services:
+        - name: web-svc
+          port: 80
