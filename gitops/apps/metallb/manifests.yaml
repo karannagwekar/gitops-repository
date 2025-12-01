@@ -296,6 +296,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - --log-level=info
+            - --webhook-mode=disabled
           env:
             - name: METALLB_ML_BIND_ADDR
               valueFrom:
