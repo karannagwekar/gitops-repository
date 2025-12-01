@@ -6,6 +6,9 @@ metadata:
   name: metallb-system
 
 ---
+# ServiceAccount for Controller
+apiVersion: v1
+kind: ServiceAccount
 metadata:
   name: controller
   namespace: metallb-system
