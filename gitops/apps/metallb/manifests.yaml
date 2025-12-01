@@ -92,6 +92,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - admissionregistration.k8s.io
     resources:
