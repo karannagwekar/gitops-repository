@@ -84,7 +84,7 @@ data:
       traefik:
         address: :8080
     api:
-      insecure: false
+      insecure: true
       dashboard: true
     log:
       level: INFO
