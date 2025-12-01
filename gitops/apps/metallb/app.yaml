@@ -16,3 +16,11 @@ spec:
     automated:
       prune: true
       selfHeal: true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: metallb-webhook-cert
+      namespace: metallb-system
+      jsonPointers:
+        - /data/tls.crt
+        - /data/tls.key
