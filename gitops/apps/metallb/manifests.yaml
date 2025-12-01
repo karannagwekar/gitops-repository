@@ -12,6 +12,8 @@ kind: Secret
 metadata:
   name: metallb-webhook-cert
   namespace: metallb-system
+  annotations:
+    argocd.argoproj.io/compare-result: "ignore"
 type: kubernetes.io/tls
 stringData:
   tls.crt: ""
