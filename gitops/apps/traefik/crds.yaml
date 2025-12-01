@@ -44,10 +44,14 @@ spec:
                             type: string
                           port:
                             type: integer
+                        required:
+                        - name
                     priority:
                       type: integer
                     middlewares:
                       type: array
+                      items:
+                        type: object
                   required:
                   - match
               tls:
