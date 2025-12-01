@@ -48,6 +48,20 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - traefik.containo.us
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+    verbs:
+      - get
+      - list
+      - watch
 
 ---
 # ClusterRoleBinding
@@ -93,6 +107,7 @@ data:
     providers:
       kubernetesIngress:
         ingressClass: traefik
+      kubernetescrd: {}
     metrics:
       prometheus:
         addEntryPointsLabels: true
