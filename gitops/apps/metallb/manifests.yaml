@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: metallb-system
+  name: metallb-system-1
 
 ---
 # ServiceAccount for Controller
