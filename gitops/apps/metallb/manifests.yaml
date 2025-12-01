@@ -157,6 +157,22 @@ rules:
     verbs:
       - patch
   - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - discovery.k8s.io
     resources:
       - endpointslices
@@ -173,6 +189,7 @@ rules:
       - l2advertisements
       - bgpadvertisements
       - communities
+      - bfdprofiles
     verbs:
       - get
       - list
@@ -220,6 +237,25 @@ rules:
       - ''
     resources:
       - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - ''
+    resources:
+      - pods
     verbs:
       - get
       - list
