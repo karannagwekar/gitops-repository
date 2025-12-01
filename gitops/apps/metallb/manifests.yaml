@@ -1,0 +1,405 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+
+---
+# ServiceAccount for Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller
+  namespace: metallb-system
+
+---
+# ServiceAccount for Speaker
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: speaker
+  namespace: metallb-system
+
+---
+# ClusterRole for Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: metallb-controller
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - services/status
+    verbs:
+      - update
+  - apiGroups:
+      - ''
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - metallb.io
+    resources:
+      - addresspools
+      - ipaddresspools
+      - bgppeers
+      - bgpadvertisements
+      - l2advertisements
+      - communities
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRole for Speaker
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: metallb-speaker
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - services/status
+    verbs:
+      - update
+  - apiGroups:
+      - ''
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - ''
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - metallb.io
+    resources:
+      - addresspools
+      - ipaddresspools
+      - bgppeers
+      - l2advertisements
+      - bgpadvertisements
+      - communities
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRoleBinding for Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metallb-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: metallb-controller
+subjects:
+  - kind: ServiceAccount
+    name: controller
+    namespace: metallb-system
+
+---
+# ClusterRoleBinding for Speaker
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metallb-speaker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: metallb-speaker
+subjects:
+  - kind: ServiceAccount
+    name: speaker
+    namespace: metallb-system
+
+---
+# Role for Speaker
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: speaker
+  namespace: metallb-system
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# RoleBinding for Speaker
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: speaker
+  namespace: metallb-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: speaker
+subjects:
+  - kind: ServiceAccount
+    name: speaker
+    namespace: metallb-system
+
+---
+# Deployment for Controller
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metallb
+      component: controller
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: metallb
+        component: controller
+    spec:
+      serviceAccountName: controller
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: controller
+          image: quay.io/metallb/controller:v0.14.5
+          imagePullPolicy: IfNotPresent
+          args:
+            - --log-level=info
+          env:
+            - name: METALLB_ML_BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: METALLB_BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - name: metrics
+              containerPort: 7472
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 7472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 7472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+---
+# DaemonSet for Speaker
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: speaker
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: speaker
+spec:
+  selector:
+    matchLabels:
+      app: metallb
+      component: speaker
+  template:
+    metadata:
+      labels:
+        app: metallb
+        component: speaker
+    spec:
+      serviceAccountName: speaker
+      hostNetwork: true
+      hostAliases:
+        - ip: 127.0.0.1
+          hostnames:
+            - localhost
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: speaker
+          image: quay.io/metallb/speaker:v0.14.5
+          imagePullPolicy: IfNotPresent
+          args:
+            - --log-level=info
+          env:
+            - name: METALLB_ML_BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: METALLB_BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: METALLB_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: METALLB_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: METALLB_ML_LABELS
+              value: "app=metallb,component=speaker"
+            - name: METALLB_ML_NAMESPACE
+              value: "metallb-system"
+          ports:
+            - name: metrics
+              containerPort: 7472
+              protocol: TCP
+            - name: memberlist
+              containerPort: 7946
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              add:
+                - NET_RAW
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 7472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 7472
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+
+---
+# Service for Controller Metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-controller
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: controller
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 7472
+      targetPort: 7472
+      protocol: TCP
+  selector:
+    app: metallb
+    component: controller
+
+---
+# Service for Speaker Metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: metallb-speaker
+  namespace: metallb-system
+  labels:
+    app: metallb
+    component: speaker
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 7472
+      targetPort: 7472
+      protocol: TCP
+  selector:
+    app: metallb
+    component: speaker

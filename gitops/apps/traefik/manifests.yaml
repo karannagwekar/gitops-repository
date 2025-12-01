@@ -1,0 +1,231 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik
+
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: traefik
+
+---
+# ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: traefik
+
+---
+# ConfigMap for Traefik static config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-config
+  namespace: traefik
+data:
+  traefik.yaml: |
+    global:
+      checkNewVersion: false
+      sendAnonymousUsage: false
+    entryPoints:
+      web:
+        address: :8000
+      websecure:
+        address: :8443
+      traefik:
+        address: :8080
+    api:
+      insecure: false
+      dashboard: true
+    log:
+      level: INFO
+    accessLog:
+      format: json
+    providers:
+      kubernetesCRD:
+        allowCrossNamespace: false
+        ingressClass: traefik
+      kubernetesIngress:
+        ingressClass: traefik
+    metrics:
+      prometheus:
+        addEntryPointsLabels: true
+        addServicesLabels: true
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: traefik
+  labels:
+    app: traefik
+spec:
+  type: LoadBalancer
+  ports:
+    - name: web
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+    - name: websecure
+      port: 443
+      targetPort: 8443
+      protocol: TCP
+  selector:
+    app: traefik
+
+---
+# Service for Dashboard
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-dashboard
+  namespace: traefik
+  labels:
+    app: traefik
+spec:
+  type: ClusterIP
+  ports:
+    - name: dashboard
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: traefik
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: traefik
+  labels:
+    app: traefik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik
+      securityContext:
+        fsGroup: 65534
+      containers:
+        - name: traefik
+          image: traefik:v2.11.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+          ports:
+            - name: web
+              containerPort: 8000
+              protocol: TCP
+            - name: websecure
+              containerPort: 8443
+              protocol: TCP
+            - name: dashboard
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/traefik
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: traefik-config
+        - name: tmp
+          emptyDir: {}
+
+---
+# IngressClass
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: traefik
+spec:
+  controller: traefik.io/ingress-controller
