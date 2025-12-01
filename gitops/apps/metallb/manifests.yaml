@@ -63,6 +63,30 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - validatingwebhookconfigurations
+    verbs:
+      - get
+      - list
+      - watch
 
 ---
 # ClusterRole for Speaker
@@ -176,6 +200,26 @@ rules:
       - watch
 
 ---
+# Role for Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: controller
+  namespace: metallb-system
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+
+---
 # RoleBinding for Speaker
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -189,6 +233,22 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: speaker
+    namespace: metallb-system
+
+---
+# RoleBinding for Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: controller
+  namespace: metallb-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: controller
+subjects:
+  - kind: ServiceAccount
+    name: controller
     namespace: metallb-system
 
 ---
