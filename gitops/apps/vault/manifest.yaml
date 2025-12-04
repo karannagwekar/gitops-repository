@@ -26,4 +26,91 @@ data:
     api_addr     = "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
     cluster_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8201"
 ---
-#
+# Headless service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-internal
+  namespace: vault
+  labels:
+    app: vault
+spec:
+  clusterIP: None
+  selector:
+    app: vault
+  ports:
+    - name: http
+      port: 8200
+    - name: cluster
+      port: 8201
+---
+# StatefulSet with 3 replicas and persistent storage
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault
+  namespace: vault
+  labels:
+    app: vault
+spec:
+  serviceName: vault-internal
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: vault
+        image: hashicorp/vault:1.19.0
+        args:
+          - "server"
+          - "-config=/vault/config/vault.hcl"
+        env:
+        - name: VAULT_ADDR
+          value: "http://127.0.0.1:8200"
+        ports:
+        - containerPort: 8200
+          name: http
+        - containerPort: 8201
+          name: cluster
+        volumeMounts:
+        - name: config
+          mountPath: /vault/config/vault.hcl
+          subPath: vault.hcl
+        - name: data
+          mountPath: /vault/data
+      volumes:
+      - name: config
+        configMap:
+          name: vault-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# NodePort service for UI / HTTP access
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-ui
+  namespace: vault
+spec:
+  type: NodePort
+  selector:
+    app: vault
+  ports:
+    - port: 8200
+      targetPort: 8200
+      nodePort: 30080
+      name: http
