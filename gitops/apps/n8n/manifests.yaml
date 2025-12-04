@@ -143,6 +143,9 @@ data:
     else
     	echo "SETUP INFO: No Environment variables given!"
     fi
+
+  enable-pgcrypto.sql: |
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -213,6 +216,8 @@ spec:
               value: postgres-service
             - name: POSTGRES_PORT
               value: '5432'
+            - name: POSTGRES_INITDB_ARGS
+              value: "--data-checksums"
       restartPolicy: Always
       volumes:
         - name: postgresql-pv
