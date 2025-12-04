@@ -3,6 +3,30 @@ kind: Namespace
 metadata:
   name: vault
 ---
+# ConfigMap for vault.hcl
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: vault
+data:
+  vault.hcl: |
+    ui = true
+    listener "tcp" {
+      address       = "0.0.0.0:8200"
+      cluster_address = "0.0.0.0:8201"
+      tls_disable   = true
+    }
+    storage "raft" {
+      path    = "/vault/data"
+      retry_join {
+        leader_api_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
+      }
+    }
+    api_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
+    cluster_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8201"
+---
+# Headless service for StatefulSet
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,6 +44,7 @@ spec:
     - name: cluster
       port: 8201
 ---
+# StatefulSet with 3 replicas
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -38,12 +63,15 @@ spec:
       labels:
         app: vault
     spec:
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
       - name: vault
         image: hashicorp/vault:1.19.0
         args:
-        - "server"
-        - "-config=/vault/config/vault.hcl"
+          - "server"
+          - "-config=/vault/config/vault.hcl"
         env:
         - name: VAULT_ADDR
           value: "http://127.0.0.1:8200"
@@ -54,56 +82,32 @@ spec:
           name: cluster
         volumeMounts:
         - name: config
-          mountPath: /vault/config
+          mountPath: /vault/config/vault.hcl
+          subPath: vault.hcl
         - name: data
           mountPath: /vault/data
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK"]
       volumes:
-        - name: config
-          configMap:
-            name: vault-config
-  volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 5Gi
+      - name: config
+        configMap:
+          name: vault-config
+      - name: data
+        emptyDir: {}
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vault-config
-  namespace: vault
-data:
-  vault.hcl: |
-    ui = true
-    listener "tcp" {
-      address     = "0.0.0.0:8200"
-      cluster_address = "0.0.0.0:8201"
-      tls_disable = true
-    }
-    storage "raft" {
-      path    = "/vault/data"
-      retry_join {
-        leader_api_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
-      }
-    }
-    api_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8200"
-    cluster_addr = "http://vault-0.vault-internal.vault.svc.cluster.local:8201"
----
+# NodePort service for UI / HTTP access
 apiVersion: v1
 kind: Service
 metadata:
   name: vault-ui
   namespace: vault
-  labels:
-    app: vault
 spec:
   type: NodePort
   selector:
     app: vault
   ports:
     - port: 8200
+      targetPort: 8200
       nodePort: 30080
       name: http
