@@ -63,6 +63,7 @@ spec:
       labels:
         app: vault
     spec:
+      # No capabilities added (macOS compatible)
       securityContext:
         runAsUser: 1000
         fsGroup: 1000
