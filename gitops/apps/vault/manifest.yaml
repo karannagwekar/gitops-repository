@@ -86,9 +86,6 @@ spec:
           subPath: vault.hcl
         - name: data
           mountPath: /vault/data
-        securityContext:
-          capabilities:
-            add: ["IPC_LOCK"]
       volumes:
       - name: config
         configMap:
