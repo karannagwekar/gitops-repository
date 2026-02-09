@@ -3,27 +3,36 @@ kind: Namespace
 metadata:
   name: vault
 ---
-# Dev mode Vault pod
-apiVersion: v1
-kind: Pod
+# Dev mode Vault deployment
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: vault-dev
   namespace: vault
   labels:
     app: vault
 spec:
-  containers:
-  - name: vault
-    image: hashicorp/vault:1.19.0
-    args:
-      - "server"
-      - "-dev"
-      - "-dev-root-token-id=root"
-    ports:
-      - containerPort: 8200
-        name: http
-      - containerPort: 8201
-        name: cluster
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      containers:
+      - name: vault
+        image: hashicorp/vault:1.19.0
+        args:
+          - "server"
+          - "-dev"
+          - "-dev-root-token-id=root"
+        ports:
+          - containerPort: 8200
+            name: http
+          - containerPort: 8201
+            name: cluster
 ---
 # NodePort service to access Vault UI/API
 apiVersion: v1
