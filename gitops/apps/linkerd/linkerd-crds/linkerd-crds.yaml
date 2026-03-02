@@ -1,0 +1,4 @@
+enableHttpRoutes: true
+enableTlsRoutes: false
+enableTcpRoutes: false
+manageExternalWorkloads: false
