@@ -1,0 +1,353 @@
+---
+# ServiceAccount for aws-node DaemonSet
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-node
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+  annotations:
+    # IRSA: binds this ServiceAccount to an IAM role so aws-node can
+    # manage ENIs and pod IPs via EC2 APIs.
+    # Replace <ACCOUNT_ID> and <VPC_CNI_ROLE_NAME> with your values.
+    eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<VPC_CNI_ROLE_NAME>
+
+---
+# ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-node
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs:
+      - list
+      - watch
+      - get
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - list
+      - watch
+      - get
+      - patch
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs:
+      - list
+      - watch
+      - get
+      - update
+      - patch
+  - apiGroups: [""]
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+      - update
+  - apiGroups: ["extensions", "apps"]
+    resources:
+      - daemonsets
+    verbs:
+      - list
+      - watch
+      - get
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+      - list
+      - watch
+  - apiGroups: ["networking.k8s.aws"]
+    resources:
+      - eniconfigs
+    verbs:
+      - list
+      - watch
+      - get
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aws-node
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aws-node
+subjects:
+  - kind: ServiceAccount
+    name: aws-node
+    namespace: kube-system
+
+---
+# CRD: ENIConfig (used for custom networking / secondary CIDR ranges)
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: eniconfigs.networking.k8s.aws
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+spec:
+  group: networking.k8s.aws
+  scope: Cluster
+  names:
+    plural: eniconfigs
+    singular: eniconfig
+    kind: ENIConfig
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                subnet:
+                  type: string
+                securityGroups:
+                  type: array
+                  items:
+                    type: string
+
+---
+# ConfigMap for aws-vpc-cni configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amazon-vpc-cni
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+data:
+  enable-windows-ipam: "false"
+  enable-network-policy-controller: "false"
+
+---
+# DaemonSet: aws-node (VPC CNI plugin)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: aws-node
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: aws-node
+    app.kubernetes.io/component: networking
+    k8s-app: aws-node
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  selector:
+    matchLabels:
+      k8s-app: aws-node
+  template:
+    metadata:
+      labels:
+        k8s-app: aws-node
+        app.kubernetes.io/name: aws-node
+        app.kubernetes.io/component: networking
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: aws-node
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux
+      initContainers:
+        - name: aws-vpc-cni-init
+          image: 602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon-k8s-cni-init:v1.18.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DISABLE_TCP_EARLY_DEMUX
+              value: "false"
+            - name: ENABLE_IPv6
+              value: "false"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /host/opt/cni/bin
+              name: cni-bin-dir
+      containers:
+        - name: aws-node
+          image: 602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon-k8s-cni:v1.18.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 61678
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+                - /app/grpc-health-probe
+                - -addr=:50051
+                - -connect-timeout=5s
+                - -rpc-timeout=5s
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /app/grpc-health-probe
+                - -addr=:50051
+                - -connect-timeout=5s
+                - -rpc-timeout=5s
+            initialDelaySeconds: 1
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          env:
+            - name: ADDITIONAL_ENI_TAGS
+              value: ""
+            - name: AWS_VPC_CNI_NODE_PORT_SUPPORT
+              value: "true"
+            - name: AWS_VPC_ENI_MTU
+              value: "9001"
+            - name: AWS_VPC_K8S_CNI_CONFIGURE_RPFILTER
+              value: "false"
+            - name: AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG
+              value: "false"
+            - name: AWS_VPC_K8S_CNI_EXTERNALSNAT
+              value: "false"
+            - name: AWS_VPC_K8S_CNI_LOGLEVEL
+              value: DEBUG
+            - name: AWS_VPC_K8S_CNI_LOG_FILE
+              value: /host/var/log/aws-routed-eni/ipamd.log
+            - name: AWS_VPC_K8S_CNI_RANDOMIZESNAT
+              value: prng
+            - name: AWS_VPC_K8S_CNI_VETHPREFIX
+              value: eni
+            - name: AWS_VPC_K8S_PLUGIN_LOG_FILE
+              value: /var/log/aws-routed-eni/plugin.log
+            - name: AWS_VPC_K8S_PLUGIN_LOG_LEVEL
+              value: DEBUG
+            - name: DISABLE_INTROSPECTION
+              value: "false"
+            - name: DISABLE_METRICS
+              value: "false"
+            - name: DISABLE_NETWORK_RESOURCE_PROVISIONING
+              value: "false"
+            - name: ENABLE_IPv4
+              value: "true"
+            - name: ENABLE_IPv6
+              value: "false"
+            - name: ENABLE_POD_ENI
+              value: "false"
+            - name: ENABLE_PREFIX_DELEGATION
+              value: "false"
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: WARM_ENI_TARGET
+              value: "1"
+            - name: WARM_PREFIX_TARGET
+              value: "1"
+            - name: DISABLE_LEAKED_ENI_CLEANUP
+              value: "false"
+          resources:
+            requests:
+              cpu: 25m
+            limits:
+              cpu: "1"
+              memory: 500Mi
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+          volumeMounts:
+            - mountPath: /host/opt/cni/bin
+              name: cni-bin-dir
+            - mountPath: /host/etc/cni/net.d
+              name: cni-net-dir
+            - mountPath: /host/var/log/aws-routed-eni
+              name: log-dir
+            - mountPath: /var/run/aws-node
+              name: run-dir
+            - mountPath: /run/xtables.lock
+              name: xtables-lock
+        - name: aws-eks-nodeagent
+          image: 602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon/aws-network-policy-agent:v1.1.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          args:
+            - --enable-ipv6=false
+            - --enable-network-policy=false
+            - --enable-cloudwatch-logs=false
+            - --enable-policy-event-logs=false
+            - --log-file=/var/log/aws-routed-eni/network-policy-agent.log
+          resources:
+            requests:
+              cpu: 25m
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+            privileged: true
+          volumeMounts:
+            - mountPath: /host/opt/cni/bin
+              name: cni-bin-dir
+            - mountPath: /sys/fs/bpf
+              name: bpf-pin-path
+            - mountPath: /var/log/aws-routed-eni
+              name: log-dir
+            - mountPath: /var/run/aws-node
+              name: run-dir
+      volumes:
+        - name: cni-bin-dir
+          hostPath:
+            path: /opt/cni/bin
+        - name: cni-net-dir
+          hostPath:
+            path: /etc/cni/net.d
+        - name: log-dir
+          hostPath:
+            path: /var/log/aws-routed-eni
+            type: DirectoryOrCreate
+        - name: run-dir
+          hostPath:
+            path: /var/run/aws-node
+            type: DirectoryOrCreate
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: File
+        - name: bpf-pin-path
+          hostPath:
+            path: /sys/fs/bpf
